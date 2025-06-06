@@ -1,0 +1,52 @@
+[
+    {
+        "balance": 10.0,
+        "password": "admin123",
+        "username": "admin"
+    },
+    {
+        "balance": 2010.24,
+        "password": "veskov",
+        "username": "vesko"
+    },
+    {
+        "balance": 1810.0,
+        "password": "vanko1",
+        "username": "ivan"
+    },
+    {
+        "balance": 26.0,
+        "password": "1",
+        "username": "1"
+    },
+    {
+        "balance": 10.0,
+        "password": "2",
+        "username": "2"
+    },
+    {
+        "balance": 10.0,
+        "password": "",
+        "username": ""
+    },
+    {
+        "balance": 13.0,
+        "password": "3",
+        "username": "3"
+    },
+    {
+        "balance": 10.0,
+        "password": "23",
+        "username": "23"
+    },
+    {
+        "balance": 10.0,
+        "password": "petar23",
+        "username": "petar"
+    },
+    {
+        "balance": 10.0,
+        "password": "asdf",
+        "username": "asdf"
+    }
+]
