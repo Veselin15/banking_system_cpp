@@ -9,10 +9,12 @@
 #include <random>
 #include "json.hpp"
 #include <openssl/sha.h>
+#include <openssl/rand.h>
 using namespace std;
 using json = nlohmann::json;
 
 const string FILENAME = "profiles.json";
+const size_t SALT_LENGTH = 16; // 16 bytes = 128 bits
 
 void waitForUserInput() {
     cout << "\nPress Enter to continue...";
@@ -22,27 +24,59 @@ void waitForUserInput() {
 
 void clearConsole() {
     #ifdef _WIN32
-            
-            system("cls");
-        #else
-            system("clear");
-        #endif
-        cout << flush;
+        system("cls");
+    #else
+        system("clear");
+    #endif
+    cout << flush;
+}
+
+// Helper: Generate a random salt (hex string)
+string generateSalt(size_t length = SALT_LENGTH) {
+    unsigned char salt_bytes[SALT_LENGTH];
+    if (RAND_bytes(salt_bytes, length) != 1) {
+        throw runtime_error("Failed to generate random salt");
+    }
+    stringstream ss;
+    for (size_t i = 0; i < length; ++i) {
+        ss << hex << setw(2) << setfill('0') << (int)salt_bytes[i];
+    }
+    return ss.str();
+}
+
+// Helper: Hash password+salt using SHA-256, return hex string
+string hashPassword(const string& password, const string& salt) {
+    string input = password + salt;
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256((const unsigned char*)input.c_str(), input.size(), hash);
+    stringstream ss;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
+        ss << hex << setw(2) << setfill('0') << (int)hash[i];
+    }
+    return ss.str();
 }
 
 class Profile{
     private:
         double balance;
-        string password;
+        string password_hash;
+        string salt;
     public:
         string username;
         
-        // Constructor
+        // Constructor for new user (hashes password)
         Profile(const string& uname, const string& pwd, double initial_balance = 10)
-            : username(uname), password(pwd), balance(initial_balance) {}
+            : username(uname), balance(initial_balance) {
+            salt = generateSalt();
+            password_hash = hashPassword(pwd, salt);
+        }
+
+        // Constructor for loading from JSON
+        Profile(const string& uname, const string& hash, const string& salt_val, double bal)
+            : username(uname), password_hash(hash), salt(salt_val), balance(bal) {}
 
         // Default constructor
-        Profile() : username(""), password(""), balance() {}
+        Profile() : username(""), password_hash(""), salt(""), balance() {}
 
         // Getters and Setters
         double getBalance() const {
@@ -53,18 +87,25 @@ class Profile{
             balance = new_balance;
         }
 
-        string getPassword() const {
-            return password;
+        string getPasswordHash() const {
+            return password_hash;
+        }
+
+        string getSalt() const {
+            return salt;
         }
 
         void setPassword(const string& new_password){
-            password = new_password;
+            salt = generateSalt();
+            password_hash = hashPassword(new_password, salt);
         }
-                // Serialize this Profile to JSON
+
+        // Serialize this Profile to JSON
         json serialize_to_json() const {
             return json{
                 {"username", username},
-                {"password", password},
+                {"password_hash", password_hash},
+                {"salt", salt},
                 {"balance", balance}
             };
         }
@@ -73,7 +114,8 @@ class Profile{
         static Profile deserialize_from_json(const json& j) {
             Profile p;
             p.username = j.at("username").get<string>();
-            p.password = j.at("password").get<string>();
+            p.password_hash = j.at("password_hash").get<string>();
+            p.salt = j.at("salt").get<string>();
             p.balance = j.at("balance").get<double>();
             return p;
         }
@@ -92,10 +134,7 @@ class BankSystem{
 
         void RegisterUser(const string& username, const string& password) {
             if (usernameExists(username)) {
-                
-                
                 cout << "Username already exists! Please choose another." << endl;
-
                 waitForUserInput();
                 return;
             }
@@ -103,24 +142,24 @@ class BankSystem{
             addProfile(new_profile);
             cout << "Registration successful!" << endl;
             saveProfiles(FILENAME); // Save after registration
-
             waitForUserInput();
         }
 
         bool LoginUser(const string& username, const string& password) {
             for (size_t i = 0; i < profiles.size(); ++i) {
-                if (profiles[i].username == username && profiles[i].getPassword() == password) {
-                    current_user_index = static_cast<int>(i);
+                if (profiles[i].username == username) {
+                    string hash_attempt = hashPassword(password, profiles[i].getSalt());
+                    if (profiles[i].getPasswordHash() == hash_attempt) {
+                        current_user_index = static_cast<int>(i);
                         cout << "Login successful! Welcome, " << getCurrentUsername() << endl;
                         cout << "Your balance is: $" << getCurrentUserBalance() << endl;
-
                         waitForUserInput();
-                    return true;
+                        return true;
+                    }
                 }
             }
             current_user_index = -1;
             cout << "Invalid username or password!" << endl;
-
             waitForUserInput();
             return false;
         }
@@ -128,7 +167,6 @@ class BankSystem{
         void LogoutUser() {
             current_user_index = -1;
             cout << "Logged out successfully!" << endl;
-
             waitForUserInput();
         }
 
@@ -146,10 +184,8 @@ class BankSystem{
                 return;
             }
             profiles[current_user_index].setBalance(profiles[current_user_index].getBalance() - amount);
-            
             cout << "Withdrawal successful! New balance: $" << profiles[current_user_index].getBalance() << endl;
             saveProfiles(FILENAME); // Save after withdrawal
-
             waitForUserInput();
         }
 
@@ -165,7 +201,6 @@ class BankSystem{
             profiles[current_user_index].setBalance(profiles[current_user_index].getBalance() + amount);
             cout << "Deposit successful! New balance: $" << profiles[current_user_index].getBalance() << endl;
             saveProfiles(FILENAME); // Save after deposit
-
             waitForUserInput();
         }
 
@@ -208,8 +243,6 @@ class BankSystem{
             cout << "Transaction successful! Your new balance: $" << sender->getBalance() << endl;
             saveProfiles(FILENAME);
             waitForUserInput();
-
-
         }
 
         bool usernameExists(const string& username) const {
@@ -280,7 +313,6 @@ int main() {
         bank_system.saveProfiles(FILENAME); // Save the default admin
     }
     
-
     // Main loop for the banking system
     while (true) {
         clearConsole();
@@ -364,7 +396,6 @@ int main() {
                     break;
                 default:
                     cout << "Invalid choice!" << endl;
-
                     waitForUserInput();
                     continue; // Restart the loop for valid input
             }
