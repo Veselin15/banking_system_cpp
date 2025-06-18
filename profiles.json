@@ -6,7 +6,7 @@
         "username": "admin"
     },
     {
-        "balance": 270.0,
+        "balance": 500.0,
         "password_hash": "6d2909afd495654ae5f762d9fe0d18f649b894c52717144bf9e55f10ebae354b",
         "salt": "c88fc644ba898b6e29b2e38da8bfae36",
         "username": "Petar"
@@ -16,5 +16,11 @@
         "password_hash": "9d45d7f8785a42f1d1c5433a18c4987beab654c2dac8f51ceb2ce50ea7de6cdd",
         "salt": "e8e66e6fdc0324336235ee79809143be",
         "username": "vlado"
+    },
+    {
+        "balance": 1870.0,
+        "password_hash": "279b820f42d829e7ee83a9495847ae0a583d1b5deb037f4d51304f8b15deb92f",
+        "salt": "1965cecafa01ae26a2d75c75b6db80d1",
+        "username": "ivan"
     }
 ]

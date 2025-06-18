@@ -10,11 +10,21 @@
 #include "json.hpp"
 #include <openssl/sha.h>
 #include <openssl/rand.h>
+#include <mutex>
+#include <fstream>
+#include <ctime>
 using namespace std;
 using json = nlohmann::json;
 
 const string FILENAME = "profiles.json";
 const size_t SALT_LENGTH = 16; // 16 bytes = 128 bits
+
+
+void logTransaction(const string& type, const string& sender, const string& receiver, double amount) {
+    ofstream journal("journal.log", ios::app);
+    time_t now = time(0);
+    journal << now << "," << type << "," << sender << "," << receiver << "," << amount << endl;
+}
 
 void waitForUserInput() {
     cout << "\nPress Enter to continue...";
@@ -128,6 +138,50 @@ class BankSystem{
         
         BankSystem() : current_user_index(-1) {}
 
+        std::mutex mtx;
+
+        void replayJournal(BankSystem& bank) {
+            ifstream journal("journal.log");
+            string line;
+            while (getline(journal, line)) {
+                stringstream ss(line);
+                string timestamp, type, sender, receiver, amount_str;
+                getline(ss, timestamp, ',');
+                getline(ss, type, ',');
+                getline(ss, sender, ',');
+                getline(ss, receiver, ',');
+                getline(ss, amount_str, ',');
+                double amount = stod(amount_str);
+
+                if (type == "deposit") {
+                    for (auto& profile : bank.profiles) {
+                        if (profile.username == sender) {
+                            profile.setBalance(profile.getBalance() + amount);
+                            break;
+                        }
+                    }
+                } else if (type == "withdraw") {  
+                    for (auto& profile : bank.profiles) {
+                        if (profile.username == sender) {
+                            profile.setBalance(profile.getBalance() - amount);
+                            break;
+                        }
+                    }
+                } else if (type == "transfer") {
+                    Profile* sender_p = nullptr;
+                    Profile* receiver_p = nullptr;
+                    for (auto& profile : bank.profiles) {
+                        if (profile.username == sender) sender_p = &profile;
+                        if (profile.username == receiver) receiver_p = &profile;
+                    }
+                    if (sender_p && receiver_p) {
+                        sender_p->setBalance(sender_p->getBalance() - amount);
+                        receiver_p->setBalance(receiver_p->getBalance() + amount);
+                    }
+                }
+            }
+        }
+
         void addProfile(const Profile& profile) {
             profiles.push_back(profile);
         }
@@ -171,6 +225,7 @@ class BankSystem{
         }
 
         void Withdraw(double amount){
+            std::lock_guard<std::mutex> lock(mtx);
             if (!isLoggedIn()) {
                 cout << "No user logged in!" << endl;
                 return;
@@ -183,6 +238,7 @@ class BankSystem{
                 cout << "Insufficient balance!" << endl;
                 return;
             }
+            logTransaction("withdraw", getCurrentUsername(), "", amount);
             profiles[current_user_index].setBalance(profiles[current_user_index].getBalance() - amount);
             cout << "Withdrawal successful! New balance: $" << profiles[current_user_index].getBalance() << endl;
             saveProfiles(FILENAME); // Save after withdrawal
@@ -190,6 +246,7 @@ class BankSystem{
         }
 
         void Deposit(double amount) {
+            std::lock_guard<std::mutex> lock(mtx);
             if (!isLoggedIn()) {
                 cout << "No user logged in!" << endl;
                 return;
@@ -198,6 +255,7 @@ class BankSystem{
                 cout << "Invalid amount! Please enter a positive value." << endl;
                 return;
             }
+            logTransaction("deposit", getCurrentUsername(), "", amount);
             profiles[current_user_index].setBalance(profiles[current_user_index].getBalance() + amount);
             cout << "Deposit successful! New balance: $" << profiles[current_user_index].getBalance() << endl;
             saveProfiles(FILENAME); // Save after deposit
@@ -205,6 +263,7 @@ class BankSystem{
         }
 
         void Transaction(double amount, const string reciever_username){
+            std::lock_guard<std::mutex> lock(mtx);
             if (!isLoggedIn()) {
                 cout << "No user logged in!" << endl;
                 waitForUserInput();
@@ -238,6 +297,7 @@ class BankSystem{
                 waitForUserInput();
                 return;
             }
+            logTransaction("transfer", getCurrentUsername(), reciever_username, amount);
             sender->setBalance(sender->getBalance() - amount);
             receiver->setBalance(receiver->getBalance() + amount);
             cout << "Transaction successful! Your new balance: $" << sender->getBalance() << endl;
@@ -308,6 +368,7 @@ class BankSystem{
 int main() {    
     BankSystem bank_system;
     bank_system.loadProfiles(FILENAME); // Load profiles at startup
+    bank_system.replayJournal(bank_system); 
     if (bank_system.profiles.empty()) {
         bank_system.addProfile(Profile("admin", "admin123")); // Add default admin if no profiles
         bank_system.saveProfiles(FILENAME); // Save the default admin
